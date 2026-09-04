@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Nagpur Traffic Live</title>
+<style>
+*{box-sizing:border-box}html,body,#map{margin:0;width:100%;height:100%;font-family:Inter,system-ui,-apple-system,sans-serif}body{overflow:hidden;background:#e5e7eb}.top{position:fixed;z-index:1000;top:10px;left:10px;right:10px;display:flex;gap:8px;align-items:center;pointer-events:none}.brand,.search,.suggestions{position:absolute;top:48px;left:0;right:0;background:#fff;border-radius:14px;box-shadow:0 6px 24px #0003;overflow:hidden;display:none;max-height:300px;overflow-y:auto}.suggestion{padding:11px 13px;border-bottom:1px solid #eee;cursor:pointer;font-size:13px}.suggestion b{display:block}.suggestion span{color:#667085;font-size:11px}.go,.loc{pointer-events:auto;background:#fff;box-shadow:0 4px 18px #0002}.brand{padding:12px 13px;border-radius:16px;font-weight:800;white-space:nowrap}.searchWrap{position:relative;flex:1;min-width:0}.search{width:100%;border:0;padding:12px 13px;border-radius:16px;font-size:14px;outline:none}.suggestions{position:absolute;top:48px;left:0;right:0;background:#fff;border-radius:14px;box-shadow:0 6px 24px #0003;overflow:hidden;display:none;max-height:300px;overflow-y:auto}.suggestion{padding:11px 13px;border-bottom:1px solid #eee;cursor:pointer;font-size:13px}.suggestion b{display:block}.suggestion span{color:#667085;font-size:11px}.go,.loc{border:0;border-radius:16px;padding:12px 13px;font-weight:800;font-size:13px}.go{background:#111;color:#fff}.loc{font-size:17px;padding:10px 12px}.routebar{position:fixed;z-index:1000;top:68px;left:10px;right:10px;display:flex;gap:8px;pointer-events:none}.routebar input{pointer-events:auto;flex:1;min-width:0;border:0;border-radius:14px;padding:12px 14px;background:#fff;box-shadow:0 4px 18px #0002;font-size:14px;outline:none}.routebar button{pointer-events:auto;border:0;border-radius:14px;padding:0 15px;background:#fff;box-shadow:0 4px 18px #0002;font-weight:800}.panel{position:fixed;z-index:1000;right:12px;bottom:12px;width:370px;background:#fff;border-radius:20px;padding:16px;box-shadow:0 8px 28px #0003}.sig{display:flex;justify-content:space-between;align-items:center}.dot{width:14px;height:14px;border-radius:50%;display:inline-block;margin-right:7px;vertical-align:-1px}.green{background:#16a34a}.red{background:#dc2626}.yellow{background:#eab308}.count{font-size:38px;font-weight:900}.small{color:#667085;font-size:12px}.row{display:flex;justify-content:space-between;gap:8px;margin-top:10px}.pill{padding:7px 10px;border-radius:11px;background:#f2f4f7;font-size:12px}.legend{position:fixed;z-index:1000;left:12px;bottom:12px;background:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 4px 18px #0002;font-size:12px}.notice{position:fixed;z-index:1000;top:125px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:9px 13px;border-radius:12px;box-shadow:0 4px 18px #0002;font-size:12px;display:none}.live{color:#15803d;font-weight:800}.warn{color:#b45309;font-weight:800}@media(max-width:600px){.brand{font-size:14px}.top{top:8px}.routebar{top:61px}.panel{left:9px;right:9px;bottom:9px;width:auto}.legend{left:9px;bottom:9px;transform:translateY(-190px)}.go{padding:12px 10px}.loc{padding:9px 10px}}
+</style>
+<script src="https://sdk.mappls.com/map/sdk/web?v=3.0&access_token=gaezauleuagelmssygqfodmefkaeynzmursm&layer=vector"></script>
+<script src="https://sdk.mappls.com/map/sdk/plugins?access_token=gaezauleuagelmssygqfodmefkaeynzmursm&v=3.0&libraries=direction,tracking"></script>
+</head>
+<body>
+<div id="map"></div><div id="notice" class="notice"></div>
+<div class="top"><div class="brand">🚦 Nagpur Traffic Live</div><div class="searchWrap"><input id="search" class="search" autocomplete="off" placeholder="Search place, road or address…"><div id="suggestions" class="suggestions"></div></div><button id="goSearch" class="go">Search</button><button id="locBtn" class="loc" title="My location">📍</button></div>
+<div class="routebar"><input id="destination" placeholder="Destination — e.g. Nagpur Railway Station"><button id="routeBtn">Route</button></div>
+<div class="legend"><b>Live Map</b> &nbsp; 📍 Current location &nbsp; 🛣️ Route</div>
+<div class="panel"><div class="small">NAVIGATION</div><div class="sig"><div><h2 id="junction" style="margin:5px 0">Waiting for route</h2><div><span id="status" class="live">● GPS / Map ready</span></div></div><div class="count" id="count">—</div></div><div class="small" id="timerNote">Signal countdown will show only when an authorised live signal feed is connected.</div><div class="row"><span class="pill" id="traffic">Traffic ETA: —</span><span class="pill" id="gps">GPS: waiting…</span></div><div class="row"><span class="small" id="routeInfo">Route: —</span><span class="small" id="speedInfo">Speed: —</span></div></div>
+<script>
+let map,userMarker=null,routeObj=null,userLatLng=null,watchId=null,trackingObj=null,lastRouteText='',routeStart=null;
+function notice(t){const n=document.getElementById('notice');n.textContent=t;n.style.display='block';clearTimeout(window.nt);window.nt=setTimeout(()=>n.style.display='none',2200)}
+function init(){
+  try{
+    map=new mappls.Map('map',{center:[21.1458,79.0882],zoom:12.7,search:false});
+    map.addListener('load',()=>{notice('Map loaded'); startGPS();});
+    if(!navigator.geolocation) document.getElementById('gps').textContent='GPS: not supported';
+  }catch(e){notice('Map failed to load. Check Mappls key/domain access.');document.getElementById('status').textContent='Map error';}
+}
+function startGPS(){
+  if(!navigator.geolocation)return;
+  watchId=navigator.geolocation.watchPosition(pos=>{
+    const c=pos.coords; userLatLng=[c.latitude,c.longitude];
+    document.getElementById('gps').textContent='GPS: live';
+    document.getElementById('speedInfo').textContent='Speed: '+(c.speed==null?'—':Math.max(0,c.speed*3.6).toFixed(0)+' km/h');
+    if(!userMarker){userMarker=new mappls.Marker({map,position:{lat:c.latitude,lng:c.longitude},fitbounds:false});}
+    else if(userMarker.setPosition) userMarker.setPosition({lat:c.latitude,lng:c.longitude});
+    if(routeObj && routeStart){
+      // Keep the route origin visually tied to the moving GPS position.
+      routeStart=[c.latitude,c.longitude];
+    }
+  },()=>{document.getElementById('gps').textContent='GPS: permission needed';notice('Allow location permission');},{enableHighAccuracy:true,maximumAge:3000,timeout:10000});
+}
+function currentLocation(){if(userLatLng){map.setCenter({lat:userLatLng[0],lng:userLatLng[1]});map.setZoom(16)}else notice('Waiting for GPS permission…')}
+function escapeHtml(v){return String(v||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]);}
+function showSuggestions(items){const box=document.getElementById('suggestions');box.innerHTML='';if(!items.length){box.style.display='none';return;}items.slice(0,6).forEach(x=>{const d=document.createElement('div');d.className='suggestion';d.innerHTML='<b>'+escapeHtml(x.placeName||x.name||'Location')+'</b><span>'+escapeHtml(x.placeAddress||x.address||'Nagpur')+'</span>';d.onclick=()=>{document.getElementById('search').value=x.placeName||x.name||'';box.style.display='none';selectPlace(x)};box.appendChild(d)});box.style.display='block';}
+let suggestionTimer;async function suggestPlaces(){const q=document.getElementById('search').value.trim();if(q.length<2){showSuggestions([]);return;}clearTimeout(suggestionTimer);suggestionTimer=setTimeout(async()=>{try{const r=await fetch('https://atlas.mappls.com/api/places/search/json?query='+encodeURIComponent(q+', Nagpur')+'&access_token='+encodeURIComponent(MAP_KEY));const d=await r.json();showSuggestions(d.suggestedLocations||d.results||[])}catch(e){showSuggestions([])}},250)}
+function selectPlace(x){const lat=+(x.latitude||x.lat||x.eLocLat),lng=+(x.longitude||x.lng||x.eLocLng);if(Number.isFinite(lat)&&Number.isFinite(lng)){map.setCenter({lat,lng});map.setZoom(16);notice('Location selected')}else searchPlace()}
+async function searchPlace(){const q=document.getElementById('search').value.trim();if(!q)return;document.getElementById('suggestions').style.display='none';notice('Searching…');try{const r=await fetch('https://atlas.mappls.com/api/places/search/json?query='+encodeURIComponent(q+', Nagpur')+'&access_token='+encodeURIComponent(MAP_KEY));const d=await r.json();const x=(d.suggestedLocations||d.results||[])[0];if(!x)throw Error();selectPlace(x)}catch(e){notice('Search unavailable')}}
+function routeToDestination(){
+ const text=document.getElementById('destination').value.trim();if(!text)return notice('Enter a destination');
+ if(!userLatLng)return notice('Allow GPS first');
+ notice('Finding traffic-aware route…');
+ // Mappls Direction plugin uses Mappls geocoding/search for the destination and draws the route on the map.
+ try{
+   if(routeObj && routeObj.remove) routeObj.remove();
+   const start=userLatLng[0]+','+userLatLng[1];
+   routeObj=mappls.direction({map:map,start:start,end:text+', Nagpur',resource:'route_traffic'},function(data){
+     document.getElementById('junction').textContent=text;
+     const info=data?.routes?.[0]||data;
+     if(info){
+       const dist=info.distance!=null?(info.distance/1000).toFixed(1)+' km':'—';
+       const dur=info.duration!=null?Math.round(info.duration/60)+' min':'—';
+       document.getElementById('routeInfo').textContent='Route: '+dist;
+       document.getElementById('traffic').textContent='Traffic ETA: '+dur;
+     }
+     document.getElementById('status').textContent='● Live navigation';
+     notice('Route ready');
+   });
+ }catch(e){
+   // Fallback to Mappls REST route endpoint.
+   fallbackRoute(text);
+ }
+}
+async function fallbackRoute(text){
+ try{
+  const geo=await fetch('https://atlas.mappls.com/api/places/geocode?address='+encodeURIComponent(text+', Nagpur')+'&access_token=gaezauleuagelmssygqfodmefkaeynzmursm').then(r=>r.json());
+  const p=geo.copResults?.[0]||geo.results?.[0]; if(!p)throw Error();
+  const dl=+(p.lng||p.longitude),dt=+(p.lat||p.latitude);
+  const s=userLatLng;
+  const url='https://route.mappls.com/route/direction/route_traffic?start='+s[0]+','+s[1]+'&destination='+dt+','+dl+'&rtype=0&region=ind&alternatives=true&access_token=gaezauleuagelmssygqfodmefkaeynzmursm';
+  const d=await fetch(url).then(r=>r.json());
+  document.getElementById('junction').textContent=text;
+  document.getElementById('traffic').textContent='Traffic ETA: '+(d.duration?Math.round(d.duration/60)+' min':'available');
+  document.getElementById('status').textContent='● Traffic route';
+  notice('Traffic route calculated');
+ }catch(e){notice('Route unavailable — enable Routing in Mappls Console');}
+}
+document.getElementById('routeBtn').onclick=routeToDestination;document.getElementById('locBtn').onclick=currentLocation;document.getElementById('goSearch').onclick=searchPlace;document.getElementById('search').addEventListener('input',suggestPlaces);document.addEventListener('click',e=>{if(!e.target.closest('.searchWrap'))document.getElementById('suggestions').style.display='none';});document.getElementById('search').addEventListener('keydown',e=>{if(e.key==='Enter')searchPlace()});document.getElementById('destination').addEventListener('keydown',e=>{if(e.key==='Enter')routeToDestination()});
+if(window.mappls) init(); else window.addEventListener('load',init);
+</script>
+</body></html>
