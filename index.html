@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Nagpur Traffic Live</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}html,body,#map{margin:0;width:100%;height:100%;font-family:Inter,system-ui,-apple-system,sans-serif}body{overflow:hidden;background:#e5e7eb}
+.top{position:fixed;z-index:1000;top:10px;left:10px;right:10px;display:flex;gap:8px;align-items:center;pointer-events:none}.brand,.search,.go,.loc{pointer-events:auto;background:#fff;box-shadow:0 4px 18px #0002}.brand{padding:12px 13px;border-radius:16px;font-weight:800;white-space:nowrap}.search{flex:1;min-width:0;border:0;padding:12px 13px;border-radius:16px;font-size:14px;outline:none}.go,.loc{border:0;border-radius:16px;padding:12px 13px;font-weight:800;font-size:13px}.go{background:#111;color:#fff}.loc{font-size:17px;padding:10px 12px}
+.routebar{position:fixed;z-index:1000;top:68px;left:10px;right:10px;display:flex;gap:8px;pointer-events:none}.routebar input{pointer-events:auto;flex:1;min-width:0;border:0;border-radius:14px;padding:12px 14px;background:#fff;box-shadow:0 4px 18px #0002;font-size:14px;outline:none}.routebar button{pointer-events:auto;border:0;border-radius:14px;padding:0 15px;background:#fff;box-shadow:0 4px 18px #0002;font-weight:800}
+.panel{position:fixed;z-index:1000;right:12px;bottom:12px;width:350px;background:#fff;border-radius:20px;padding:16px;box-shadow:0 8px 28px #0003}.sig{display:flex;justify-content:space-between;align-items:center}.dot{width:14px;height:14px;border-radius:50%;display:inline-block;margin-right:7px;vertical-align:-1px}.green{background:#16a34a}.red{background:#dc2626}.yellow{background:#eab308}.count{font-size:38px;font-weight:900}.small{color:#667085;font-size:12px}.row{display:flex;justify-content:space-between;gap:8px;margin-top:10px}.pill{padding:7px 10px;border-radius:11px;background:#f2f4f7;font-size:12px}.legend{position:fixed;z-index:1000;left:12px;bottom:12px;background:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 4px 18px #0002;font-size:12px}.notice{position:fixed;z-index:1000;top:125px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:9px 13px;border-radius:12px;box-shadow:0 4px 18px #0002;font-size:12px;display:none}.leaflet-control-attribution{font-size:9px}.leaflet-popup-content{font-size:13px}
+@media(max-width:600px){.brand{font-size:14px}.top{top:8px}.routebar{top:61px}.panel{left:9px;right:9px;bottom:9px;width:auto}.legend{left:9px;bottom:9px;transform:translateY(-175px)}.go{padding:12px 10px}.loc{padding:9px 10px}}
+</style>
+</head>
+<body>
+<div id="map"></div><div id="notice" class="notice"></div>
+<div class="top"><div class="brand">🚦 Nagpur Traffic Live</div><input id="search" class="search" placeholder="Search road or chowk…"><button id="goSearch" class="go">Search</button><button id="locBtn" class="loc" title="My location">📍</button></div>
+<div class="routebar"><input id="destination" placeholder="Destination — e.g. Nagpur Railway Station"><button id="routeBtn">Route</button></div>
+<div class="legend"><b>Map</b> &nbsp; <span style="color:#2563eb">●</span> Your location &nbsp; <span class="dot green"></span> Signal</div>
+<div class="panel"><div class="small">SELECTED JUNCTION</div><div class="sig"><div><h2 id="junction" style="margin:5px 0">LAD Square</h2><div><span id="light" class="dot" style="background:#667085"></span><b id="state">LIVE TIMER NOT AVAILABLE</b></div></div><div class="count" id="count">—</div></div><div class="small" id="timerNote">Official signal-controller countdown is not publicly connected.</div><div class="row"><span class="pill" id="traffic">Traffic ETA: unavailable</span><span class="pill" id="signalStatus">Signal locations: loading…</span></div><div class="row"><span class="small">GPS: <span id="gps">waiting…</span></span><span class="small" id="routeInfo">Route: —</span></div></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map=L.map('map',{zoomControl:false}).setView([21.1458,79.0882],12.7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
+L.control.zoom({position:'bottomright'}).addTo(map);
+
+const fallback=[['LAD Square',21.1462,79.0737],['Variety Square',21.1447,79.0833],['Maharajbagh',21.1431,79.0586],['Ajni Square',21.1226,79.0865],['Sadar',21.1537,79.0795],['Manish Nagar',21.1115,79.0870],['Zero Mile',21.1450,79.0804],['Cotton Market',21.1518,79.0970]];
+let signals=[],markers=[],userLatLng=null,routeLayer=null,userMarker=null,selectedName='LAD Square';
+const signalIcon=L.divIcon({className:'',html:'<div style="width:22px;height:22px;border-radius:50%;background:#16a34a;border:3px solid white;box-shadow:0 2px 8px #0005"></div>',iconSize:[22,22],iconAnchor:[11,11]});
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function selectSignal(name,lat,lng){selectedName=name;document.getElementById('junction').textContent=name;map.flyTo([lat,lng],15,{duration:.7});}
+function addSignal(name,lat,lng){const m=L.marker([lat,lng],{icon:signalIcon}).addTo(map).bindPopup('<b>🚦 '+esc(name)+'</b><br>Signal location from OpenStreetMap.<br><b>Live countdown:</b> not available');m.on('click',()=>selectSignal(name,lat,lng));markers.push(m);signals.push({name,lat,lng});}
+function loadFallback(){fallback.forEach(x=>addSignal(x[0],x[1],x[2]));document.getElementById('signalStatus').textContent='Signal locations: map data';}
+const overpass='[out:json][timeout:15];node[highway=traffic_signals](21.05,78.98,21.25,79.20);out body;';
+fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(overpass)).then(r=>{if(!r.ok)throw Error();return r.json()}).then(data=>{if(!data.elements?.length)throw Error();markers.forEach(m=>map.removeLayer(m));markers=[];signals=[];data.elements.slice(0,250).forEach((e,i)=>addSignal('Traffic Signal '+(i+1),e.lat,e.lon));document.getElementById('signalStatus').textContent='Signal locations: '+data.elements.length+' map points';}).catch(loadFallback);
+
+function showNotice(t){const n=document.getElementById('notice');n.textContent=t;n.style.display='block';clearTimeout(window.nt);window.nt=setTimeout(()=>n.style.display='none',1800);}
+async function geocode(text){const u='https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=in&viewbox=78.9,21.25,79.2,21.05&bounded=1&q='+encodeURIComponent(text+', Nagpur');const d=await fetch(u,{headers:{Accept:'application/json'}}).then(r=>r.json());if(!d.length)throw Error('not found');return [+d[0].lat,+d[0].lon,d[0].display_name];}
+async function searchPlace(){const q=document.getElementById('search').value.trim();if(!q)return;showNotice('Searching…');try{const [lat,lng,name]=await geocode(q);map.flyTo([lat,lng],16,{duration:.8});showNotice('Location found');}catch(e){showNotice('Location not found');}}
+document.getElementById('goSearch').onclick=searchPlace;document.getElementById('search').addEventListener('keydown',e=>{if(e.key==='Enter')searchPlace();});
+
+function setGPS(lat,lng){userLatLng=[lat,lng];document.getElementById('gps').textContent='active';if(!userMarker)userMarker=L.circleMarker([lat,lng],{radius:8,color:'#2563eb',weight:3,fillOpacity:.9}).addTo(map).bindPopup('📍 Your live location');else userMarker.setLatLng([lat,lng]);}
+if(navigator.geolocation){navigator.geolocation.watchPosition(p=>setGPS(p.coords.latitude,p.coords.longitude),()=>document.getElementById('gps').textContent='permission needed',{enableHighAccuracy:true,maximumAge:5000,timeout:10000});}else document.getElementById('gps').textContent='not supported';
+document.getElementById('locBtn').onclick=()=>{if(userLatLng)map.flyTo(userLatLng,16,{duration:.7});else showNotice('Waiting for GPS permission…');};
+
+// Road route: current GPS -> destination. Uses OSRM's public routing service for the road geometry.
+async function routeToDestination(){const text=document.getElementById('destination').value.trim();if(!text)return showNotice('Enter a destination');if(!userLatLng){showNotice('Allow GPS first');return;}showNotice('Finding route…');try{const [dlat,dlon,dname]=await geocode(text);const [slat,slon]=userLatLng;const url=`https://router.project-osrm.org/route/v1/driving/${slon},${slat};${dlon},${dlat}?overview=full&geometries=geojson&steps=true`;const r=await fetch(url);if(!r.ok)throw Error();const data=await r.json();if(data.code!=='Ok'||!data.routes?.length)throw Error();const route=data.routes[0];if(routeLayer)map.removeLayer(routeLayer);routeLayer=L.geoJSON(route.geometry,{style:{weight:6,opacity:.9}}).addTo(map);const b=routeLayer.getBounds();map.fitBounds(b.pad(.12));const km=(route.distance/1000).toFixed(1);const min=Math.round(route.duration/60);document.getElementById('routeInfo').textContent=`Route: ${km} km • ~${min} min`;document.getElementById('traffic').textContent='Traffic ETA: route time';showNotice('Route ready');}catch(e){showNotice('Could not calculate route');}}
+document.getElementById('routeBtn').onclick=routeToDestination;document.getElementById('destination').addEventListener('keydown',e=>{if(e.key==='Enter')routeToDestination();});
+</script>
+</body></html>
