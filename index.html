@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Nagpur Traffic Live</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}html,body,#map{margin:0;width:100%;height:100%;font-family:Inter,system-ui,-apple-system,sans-serif}body{overflow:hidden;background:#e5e7eb}
+.top{position:fixed;z-index:1000;top:12px;left:12px;right:12px;display:flex;gap:10px;align-items:center;pointer-events:none}.brand,.search,.live{pointer-events:auto;background:#fff;box-shadow:0 4px 18px #0002}.brand{padding:12px 14px;border-radius:16px;font-weight:800;white-space:nowrap}.search{flex:1;min-width:0;max-width:430px;border:0;padding:13px 15px;border-radius:16px;font-size:15px;outline:none}.live{padding:11px 12px;border-radius:16px;font-size:12px;white-space:nowrap}.live i{display:inline-block;width:9px;height:9px;border-radius:50%;background:#16a34a;margin-right:6px}
+.panel{position:fixed;z-index:1000;right:14px;bottom:14px;width:330px;background:#fff;border-radius:20px;padding:17px;box-shadow:0 8px 28px #0003}.sig{display:flex;justify-content:space-between;align-items:center}.dot{width:14px;height:14px;border-radius:50%;display:inline-block;margin-right:7px;vertical-align:-1px}.green{background:#16a34a}.red{background:#dc2626}.yellow{background:#eab308}.count{font-size:40px;font-weight:900}.small{color:#667085;font-size:13px}.row{display:flex;justify-content:space-between;gap:8px;margin-top:12px}.pill{padding:7px 10px;border-radius:11px;background:#f2f4f7;font-size:12px}.legend{position:fixed;z-index:1000;left:14px;bottom:14px;background:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 4px 18px #0002;font-size:12px}.notice{position:fixed;z-index:1000;top:78px;left:50%;transform:translateX(-50%);background:#fff;padding:9px 13px;border-radius:12px;box-shadow:0 4px 18px #0002;font-size:12px;display:none}.leaflet-control-attribution{font-size:9px}
+@media(max-width:600px){.top{top:9px;left:9px;right:9px;align-items:stretch}.brand{font-size:14px;padding:12px 11px}.search{font-size:14px}.live{display:none}.panel{left:10px;right:10px;bottom:10px;width:auto}.legend{left:10px;bottom:10px;transform:translateY(-166px)}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="notice" class="notice"></div>
+<div class="top"><div class="brand">🚦 Nagpur Traffic Live</div><input id="search" class="search" placeholder="Search road or chowk…"><div class="live"><i></i><span id="feed">LIVE MAP</span></div></div>
+<div class="legend"><b>Signals</b> &nbsp; <span class="dot green"></span>Signal &nbsp; <span style="color:#667085">●</span> Your location</div>
+<div class="panel"><div class="small">SELECTED JUNCTION</div><div class="sig"><div><h2 id="junction" style="margin:5px 0">LAD Square</h2><div><span id="light" class="dot" style="background:#667085"></span><b id="state">LIVE TIMER NOT AVAILABLE</b></div></div><div class="count" id="count">—</div></div><div class="small" id="timerNote">Official signal countdown data is not connected.</div><div class="row"><span class="pill" id="traffic">Traffic data: unavailable</span><span class="pill" id="signalStatus">Signal location: map data</span></div><div class="row"><span class="small">GPS: <span id="gps">waiting…</span></span><span class="small">No fake countdown</span></div></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map=L.map('map',{zoomControl:false}).setView([21.1458,79.0882],12.7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
+L.control.zoom({position:'bottomright'}).addTo(map);
+
+const fallback=[
+ ['LAD Square',21.1462,79.0737],['Variety Square',21.1447,79.0833],['Maharajbagh',21.1431,79.0586],['Ajni Square',21.1226,79.0865],['Sadar',21.1537,79.0795],['Manish Nagar',21.1115,79.0870],['Zero Mile',21.1450,79.0804],['Cotton Market',21.1518,79.0970]
+];
+let signals=[];let markers=[];let selectedName='LAD Square';
+const icon=L.divIcon({className:'',html:'<div style="width:22px;height:22px;border-radius:50%;background:#16a34a;border:3px solid white;box-shadow:0 2px 8px #0005"></div>',iconSize:[22,22],iconAnchor:[11,11]});
+function addSignal(name,lat,lng){const m=L.marker([lat,lng],{icon}).addTo(map).bindPopup('<b>🚦 '+escapeHtml(name)+'</b><br>Signal location from map data.<br><b>Live countdown:</b> not available');m.on('click',()=>selectSignal(name,lat,lng));markers.push(m);signals.push({name,lat,lng});}
+function loadFallback(){fallback.forEach(x=>addSignal(x[0],x[1],x[2]));document.getElementById('feed').textContent='LIVE MAP';}
+function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function selectSignal(name,lat,lng){selectedName=name;document.getElementById('junction').textContent=name;map.flyTo([lat,lng],15,{duration:.7});}
+
+// Pull traffic-signal locations from OpenStreetMap. This is live map data, not live controller/countdown data.
+const q='[out:json][timeout:12];node[highway=traffic_signals](21.05,78.98,21.25,79.20);out body;';
+fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q)).then(r=>r.json()).then(data=>{
+ if(!data.elements||!data.elements.length)throw Error('no signals');
+ markers.forEach(m=>map.removeLayer(m));signals=[];markers=[];
+ data.elements.slice(0,180).forEach((e,i)=>addSignal('Traffic Signal '+(i+1),e.lat,e.lon));
+ document.getElementById('signalStatus').textContent='Signals: '+data.elements.length+' map points';
+ document.getElementById('feed').textContent='MAP DATA LIVE';
+}).catch(()=>{loadFallback();document.getElementById('signalStatus').textContent='Signal locations: fallback';});
+
+// Search using Nominatim, restricted to Nagpur.
+const search=document.getElementById('search');
+search.addEventListener('keydown',async e=>{if(e.key!=='Enter')return;const q=search.value.trim();if(!q)return;document.getElementById('notice').textContent='Searching…';document.getElementById('notice').style.display='block';try{const u='https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=in&viewbox=78.9,21.25,79.2,21.05&bounded=1&q='+encodeURIComponent(q+', Nagpur');const d=await fetch(u,{headers:{'Accept':'application/json'}}).then(r=>r.json());if(!d.length)throw Error();map.flyTo([+d[0].lat,+d[0].lon],16,{duration:.8});document.getElementById('notice').textContent='Location found';}catch(err){document.getElementById('notice').textContent='Location not found';}setTimeout(()=>document.getElementById('notice').style.display='none',1400);});
+
+// Browser GPS.
+if(navigator.geolocation){navigator.geolocation.watchPosition(p=>{const lat=p.coords.latitude,lng=p.coords.longitude;document.getElementById('gps').textContent='active';if(!window.me){window.me=L.circleMarker([lat,lng],{radius:8,weight:3,fillOpacity:.9}).addTo(map).bindPopup('📍 Your live location');}else window.me.setLatLng([lat,lng]);},()=>{document.getElementById('gps').textContent='permission needed';},{enableHighAccuracy:true,maximumAge:5000,timeout:10000});}else document.getElementById('gps').textContent='not supported';
+</script>
+</body></html>
