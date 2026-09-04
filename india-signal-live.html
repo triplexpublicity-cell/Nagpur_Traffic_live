@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>India Signal Live</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#f5f7fa;color:#17202a}
+header{height:64px;background:#111827;color:#fff;display:flex;align-items:center;padding:0 16px;gap:12px;position:relative;z-index:1000}
+h1{font-size:20px;margin:0}.badge{font-size:11px;padding:5px 8px;border-radius:999px;background:#1f2937}
+#map{height:calc(100vh - 64px);width:100%}
+.panel{position:absolute;z-index:1100;top:78px;left:16px;width:min(390px,calc(100vw - 32px));background:#fff;border-radius:14px;box-shadow:0 8px 30px #0002;padding:12px}
+.search{display:flex;gap:8px}.search input{flex:1;padding:12px;border:1px solid #d1d5db;border-radius:10px;font-size:15px}.search button{border:0;border-radius:10px;padding:0 14px;background:#111827;color:#fff}
+.suggestions{max-height:220px;overflow:auto}.suggestion{padding:10px;border-bottom:1px solid #eee;cursor:pointer;font-size:13px}.suggestion:hover{background:#f3f4f6}
+.status{margin-top:10px;font-size:12px;color:#4b5563}.legend{display:flex;gap:10px;margin-top:8px;font-size:12px;flex-wrap:wrap}.dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:4px}.live{background:#16a34a}.unavail{background:#9ca3af}
+.card{margin-top:10px;border-top:1px solid #eee;padding-top:10px}.phase{font-size:28px;font-weight:800}.muted{color:#6b7280;font-size:12px}
+.loc{position:absolute;z-index:1100;right:16px;bottom:24px;border:0;background:#fff;border-radius:50%;width:48px;height:48px;box-shadow:0 5px 18px #0003;font-size:20px}
+@media(max-width:600px){header{height:56px}#map{height:calc(100vh - 56px)}.panel{top:68px}}
+</style>
+</head>
+<body>
+<header><h1>🇮🇳 India Signal Live</h1><span class="badge">LIVE DATA ONLY</span></header>
+<div id="map"></div>
+<div class="panel">
+  <div class="search">
+    <input id="q" placeholder="Search city, road, junction..." autocomplete="off">
+    <button id="routeBtn">Go</button>
+  </div>
+  <div id="suggestions" class="suggestions"></div>
+  <div class="status" id="status">Loading authorised signal feeds…</div>
+  <div class="legend">
+    <span><i class="dot live"></i>Live countdown</span>
+    <span><i class="dot unavail"></i>Signal known, live feed unavailable</span>
+  </div>
+  <div id="selected" class="card" hidden></div>
+</div>
+<button class="loc" id="loc" title="My location">⌖</button>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map=L.map('map').setView([22.9734,78.6569],5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors'}).addTo(map);
+const q=document.getElementById('q'), suggestions=document.getElementById('suggestions');
+let signals=[], markers=[], selected=null;
+
+function icon(color){
+ return L.divIcon({className:'',html:`<div style="width:18px;height:18px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 1px 6px #0008"></div>`,iconSize:[18,18],iconAnchor:[9,9]});
+}
+function renderSignals(){
+ markers.forEach(m=>m.remove()); markers=[];
+ signals.forEach(s=>{
+   if(!s.lat||!s.lng)return;
+   const live=s.live===true;
+   const m=L.marker([s.lat,s.lng],{icon:icon(live?'#16a34a':'#9ca3af')}).addTo(map);
+   m.bindPopup(`<b>${s.name}</b><br>${s.city||''}<br><span style="font-size:12px">${live ? `${s.phase||''} · ${s.remaining_s ?? '—'} sec remaining` : 'Live countdown unavailable'}</span>`);
+   m.on('click',()=>showSignal(s)); markers.push(m);
+ });
+}
+function showSignal(s){
+ selected=s; const el=document.getElementById('selected'); el.hidden=false;
+ el.innerHTML=`<b>${s.name}</b><div class="muted">${s.city||''}</div>
+ <div class="phase">${s.live ? `${s.remaining_s ?? '—'}s` : '—'}</div>
+ <div>${s.live ? (s.phase||'LIVE') : 'Live countdown unavailable'}</div>
+ <div class="muted">Source: ${s.source||'Not connected'}</div>`;
+}
+async function loadSignals(){
+ try{
+   const r=await fetch('/api/signals',{cache:'no-store'}); const data=await r.json();
+   signals=data.signals||[]; renderSignals();
+   const live=signals.filter(x=>x.live).length;
+   document.getElementById('status').textContent=`${signals.length} signal locations loaded · ${live} currently live`;
+ }catch(e){document.getElementById('status').textContent='Signal feed unavailable. No countdown is being simulated.'}
+}
+let timer;
+q.addEventListener('input',()=>{
+ clearTimeout(timer); const term=q.value.trim(); suggestions.innerHTML='';
+ if(term.length<3)return;
+ timer=setTimeout(async()=>{
+   try{
+    const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&countrycodes=in&q='+encodeURIComponent(term));
+    const a=await r.json();
+    suggestions.innerHTML=a.map(x=>`<div class="suggestion" data-lat="${x.lat}" data-lon="${x.lon}" data-name="${x.display_name.replaceAll('"','&quot;')}">${x.display_name}</div>`).join('');
+   }catch{}
+ },250);
+});
+suggestions.addEventListener('click',e=>{
+ const x=e.target.closest('.suggestion'); if(!x)return;
+ const lat=+x.dataset.lat,lon=+x.dataset.lon; map.setView([lat,lon],16); q.value=x.dataset.name; suggestions.innerHTML='';
+ const near=signals.filter(s=>s.lat&&s.lng).map(s=>({...s,d:(s.lat-lat)**2+(s.lng-lon)**2})).sort((a,b)=>a.d-b.d)[0];
+ if(near && near.d<0.001) showSignal(near);
+});
+document.getElementById('loc').onclick=()=>{
+ navigator.geolocation?.getCurrentPosition(p=>map.setView([p.coords.latitude,p.coords.longitude],16),()=>alert('Location permission denied'));
+};
+loadSignals(); setInterval(loadSignals,10000);
+</script>
+</body>
+</html>
